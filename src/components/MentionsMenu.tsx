@@ -1,4 +1,4 @@
-import * as React from "react";
+import React, { useEffect, useState } from 'react';
 import capitalize from "lodash/capitalize";
 import { Portal } from "react-portal";
 import { EditorView } from "prosemirror-view";
@@ -7,11 +7,10 @@ import styled from "styled-components";
 import { EmbedDescriptor, MenuItem, ToastType } from "../types";
 import BlockMenuItem from "./BlockMenuItem";
 import Input from "./Input";
-import VisuallyHidden from "./VisuallyHidden";
-import getDataTransferFiles from "../lib/getDataTransferFiles";
-import insertFiles from "../commands/insertFiles";
-import getMenuItems from "../menus/block";
 import baseDictionary from "../dictionary";
+import {CustomSuggestion} from './CustomSuggestionRow';
+import { useQuery} from '@apollo/client';
+import { SEARCH_NETWORK } from '/imports/wl-core/graphql/user/queries.js';
 
 const SSR = typeof window === "undefined";
 
@@ -21,12 +20,15 @@ type Props = {
   dictionary: typeof baseDictionary;
   view: EditorView;
   search: string;
+  userList?: Array<any>;
   uploadImage?: (file: File) => Promise<string>;
   onImageUploadStart?: () => void;
   onImageUploadStop?: () => void;
   onShowToast?: (message: string, id: string) => void;
   onLinkToolbarOpen: () => void;
   onClose: () => void;
+  participants: Array<any>;
+  mentionsLoading?: boolean;
   embeds: EmbedDescriptor[];
 };
 
@@ -37,9 +39,56 @@ type State = {
   bottom?: number;
   isAbove: boolean;
   selectedIndex: number;
+  showMenu?: boolean;
+  searchResults?: Array<any>;
 };
 
-class BlockMenu extends React.Component<Props, State> {
+
+const MentionsMenuQuery = props => {
+  const {search, participants} = props;
+  // Storing search results in local state prevents flickering 
+  // during display of search results
+  const [searchResults, setSearchResults ] = useState();
+  const {
+    loading: mentionsLoading,
+    error: mentionsErr,
+    data: mentionsData,
+    refetch: mentionsRefetch,
+ } = useQuery(SEARCH_NETWORK, {
+      variables: {
+          searchQuery: search,
+      },
+      fetchPolicy: 'cache-and-network',
+      nextFetchPolicy: 'cache-first',
+      skip: !search || participants,
+  });
+
+  let userMatches;
+
+  useEffect(()=>{
+
+   if(!mentionsLoading){
+    const userList = mentionsData?.listUsers.map(user => {
+      return {
+          display: user?.profile?.full_name,
+          id: user._id,
+          key: user._id,
+          userThumb: user?.profile?.picture,
+      };
+   });
+   setSearchResults(userList);
+  }
+
+  },[mentionsData, mentionsLoading])
+
+  if(participants){
+    const word = new RegExp(search?.trim(), 'i');
+    userMatches = participants.filter(participant => participant.display.match(word))
+  }
+
+  return <MentionsMenu {...props} mentionsLoading={mentionsLoading} userList={userMatches || searchResults} />
+}
+class MentionsMenu extends React.Component<Props, State> {
   menuRef = React.createRef<HTMLDivElement>();
   inputRef = React.createRef<HTMLInputElement>();
 
@@ -50,6 +99,7 @@ class BlockMenu extends React.Component<Props, State> {
     isAbove: false,
     selectedIndex: 0,
     insertItem: undefined,
+    showMenu: false,
   };
 
   componentDidMount() {
@@ -60,7 +110,8 @@ class BlockMenu extends React.Component<Props, State> {
 
   shouldComponentUpdate(nextProps, nextState) {
     return (
-      nextProps.search !== this.props.search ||
+      !nextProps.mentionsLoading && !this.props.mentionsLoading ||
+      nextProps.userList ||
       nextProps.isActive !== this.props.isActive ||
       nextState !== this.state
     );
@@ -69,7 +120,6 @@ class BlockMenu extends React.Component<Props, State> {
   componentDidUpdate(prevProps) {
     if (!prevProps.isActive && this.props.isActive) {
       const position = this.calculatePosition(this.props);
-
       this.setState({
         insertItem: undefined,
         selectedIndex: 0,
@@ -87,14 +137,13 @@ class BlockMenu extends React.Component<Props, State> {
   }
 
   handleKeyDown = (event: KeyboardEvent) => {
-    console.log('handleKeyDown');
     if (!this.props.isActive) return;
 
     if (event.key === "Enter") {
       event.preventDefault();
       event.stopPropagation();
 
-      const item = this.filtered[this.state.selectedIndex];
+      const item = this.props.userList[this.state.selectedIndex];
 
       if (item) {
         this.insertItem(item);
@@ -107,9 +156,9 @@ class BlockMenu extends React.Component<Props, State> {
       event.preventDefault();
       event.stopPropagation();
 
-      if (this.filtered.length) {
+      if (this.props.userList.length) {
         const prevIndex = this.state.selectedIndex - 1;
-        const prev = this.filtered[prevIndex];
+        const prev = this.props.userList[prevIndex];
 
         this.setState({
           selectedIndex: Math.max(
@@ -130,10 +179,10 @@ class BlockMenu extends React.Component<Props, State> {
       event.preventDefault();
       event.stopPropagation();
 
-      if (this.filtered.length) {
-        const total = this.filtered.length - 1;
+      if (this.props.userList.length) {
+        const total = this.props.userList.length - 1;
         const nextIndex = this.state.selectedIndex + 1;
-        const next = this.filtered[nextIndex];
+        const next = this.props.userList[nextIndex];
 
         this.setState({
           selectedIndex: Math.min(
@@ -153,16 +202,6 @@ class BlockMenu extends React.Component<Props, State> {
 
   insertItem = item => {
     switch (item.name) {
-      case "image":
-        return this.triggerImagePick();
-      case "embed":
-        return this.triggerLinkInput(item);
-      case "link": {
-        this.clearSearch();
-        this.props.onClose();
-        this.props.onLinkToolbarOpen();
-        return;
-      }
       default:
         this.insertBlock(item);
     }
@@ -240,70 +279,26 @@ class BlockMenu extends React.Component<Props, State> {
     this.setState({ insertItem: item });
   };
 
-  handleImagePicked = event => {
-    const files = getDataTransferFiles(event);
-
-    const {
-      view,
-      uploadImage,
-      onImageUploadStart,
-      onImageUploadStop,
-      onShowToast,
-    } = this.props;
-    const { state, dispatch } = view;
-    const parent = findParentNode(node => !!node)(state.selection);
-
-    if (parent) {
-      dispatch(
-        state.tr.insertText(
-          "",
-          parent.pos,
-          parent.pos + parent.node.textContent.length + 1
-        )
-      );
-
-      insertFiles(view, event, parent.pos, files, {
-        uploadImage,
-        onImageUploadStart,
-        onImageUploadStop,
-        onShowToast,
-        dictionary: this.props.dictionary,
-      });
-    }
-
-    if (this.inputRef.current) {
-      this.inputRef.current.value = "";
-    }
-
-    this.props.onClose();
-  };
-
   clearSearch() {
     const { state, dispatch } = this.props.view;
     const parent = findParentNode(node => !!node)(state.selection);
-
-    if (parent) {
-      dispatch(
-        state.tr.insertText(
-          "",
-          parent.pos,
-          parent.pos + parent.node.textContent.length + 1
-        )
-      );
-    }
   }
 
   insertBlock(item) {
-    this.clearSearch();
-    console.log('insertBlock item', item);
-    const command = this.props.commands[item.name];
-    console.log('InsertBlock command', command);
+    const _tempItem = {
+      name:'mention',
+      attrs:{
+        id: item.id,
+        display: item.display,
+      }
+    }
+    const command = this.props.commands[_tempItem.name];
     if (command) {
-      command(item.attrs);
+      command(_tempItem.attrs);
     } else {
       this.props.commands[`create${capitalize(item.name)}`](item.attrs);
     }
-
+    this.clearSearch();
     this.props.onClose();
   }
 
@@ -314,7 +309,7 @@ class BlockMenu extends React.Component<Props, State> {
     const ref = this.menuRef.current;
     const offsetHeight = ref ? ref.offsetHeight : 0;
     const paragraph = view.domAtPos(selection.$from.pos);
-
+ 
     if (
       !props.isActive ||
       !paragraph.node ||
@@ -329,19 +324,31 @@ class BlockMenu extends React.Component<Props, State> {
       };
     }
 
-    const { top, left, bottom } = paragraph.node.getBoundingClientRect();
     const margin = 24;
 
+    if(window?.innerWidth < 479){
+      const parentNode = paragraph.node.parentElement;
+      const { top, left, bottom } = parentNode.getBoundingClientRect();
+      const topOffset = 10;
+      return {
+        left: 0,
+        top: undefined,
+        bottom: window.innerHeight - top + topOffset,
+        isAbove: true,
+      };
+    } 
+
+    const { top, left, bottom } = paragraph.node.getBoundingClientRect();
     if (startPos.top - offsetHeight > margin) {
       return {
-        left: left + window.scrollX,
+        left: startPos.left + window.scrollX,
         top: undefined,
         bottom: window.innerHeight - top - window.scrollY,
         isAbove: false,
       };
     } else {
       return {
-        left: left + window.scrollX,
+        left: startPos.left + window.scrollX,
         top: bottom + window.scrollY,
         bottom: undefined,
         isAbove: true,
@@ -349,134 +356,27 @@ class BlockMenu extends React.Component<Props, State> {
     }
   }
 
-  get filtered() {
-    const { dictionary, embeds, search = "", uploadImage } = this.props;
-    let items: (EmbedDescriptor | MenuItem)[] = getMenuItems(dictionary);
-    const embedItems: EmbedDescriptor[] = [];
 
-    for (const embed of embeds) {
-      if (embed.title && embed.icon) {
-        embedItems.push({
-          ...embed,
-          name: "embed",
-        });
-      }
-    }
-
-    if (embedItems.length) {
-      items.push({
-        name: "separator",
-      });
-      items = items.concat(embedItems);
-    }
-
-    const filtered = items.filter(item => {
-      if (item.name === "separator") return true;
-
-      // If no image upload callback has been passed, filter the image block out
-      if (!uploadImage && item.name === "image") return false;
-
-      const n = search.toLowerCase();
-      return (
-        (item.title || "").toLowerCase().includes(n) ||
-        (item.keywords || "").toLowerCase().includes(n)
-      );
-    });
-
-    // this block literally just trims unneccessary separators from the results
-    return filtered.reduce((acc, item, index) => {
-      // trim separators from start / end
-      if (item.name === "separator" && index === 0) return acc;
-      if (item.name === "separator" && index === filtered.length - 1)
-        return acc;
-
-      // trim double separators looking ahead / behind
-      const prev = filtered[index - 1];
-      if (prev && prev.name === "separator" && item.name === "separator")
-        return acc;
-
-      const next = filtered[index + 1];
-      if (next && next.name === "separator" && item.name === "separator")
-        return acc;
-
-      // otherwise, continue
-      return [...acc, item];
-    }, []);
-  }
 
   render() {
-    const { dictionary, isActive, uploadImage } = this.props;
-    const items = this.filtered;
-    console.log('block menu filtered items', items);
+    const { dictionary, isActive, uploadImage, userList } = this.props;
+    const {selectedIndex} = this.state;
+    const renderUserList = userList?.map((user,index) => {
+      const isSelected = index == selectedIndex;
+      return <CustomSuggestion isSelected={isSelected} key={user.id} onClick={() => this.insertItem(user)} entry={user} />
+    })
     const { insertItem, ...positioning } = this.state;
-    console.log('blockmenu props', this.props);
+    const isMobileWidth = window?.innerWidth < 479;
     return (
       <Portal>
         <Wrapper
           id="block-menu-container"
           active={isActive}
+          isMobileWidth={isMobileWidth}
           ref={this.menuRef}
           {...positioning}
         >
-          {insertItem ? (
-            <LinkInputWrapper>
-              <LinkInput
-                type="text"
-                placeholder={
-                  insertItem.title
-                    ? dictionary.pasteLinkWithTitle(insertItem.title)
-                    : dictionary.pasteLink
-                }
-                onKeyDown={this.handleLinkInputKeydown}
-                onPaste={this.handleLinkInputPaste}
-                autoFocus
-              />
-            </LinkInputWrapper>
-          ) : (
-            <List>
-              {items.map((item, index) => {
-                if (item.name === "separator") {
-                  return (
-                    <ListItem key={index}>
-                      <hr />
-                    </ListItem>
-                  );
-                }
-                const selected = index === this.state.selectedIndex && isActive;
-
-                if (!item.title || !item.icon) {
-                  return null;
-                }
-
-                return (
-                  <ListItem key={index}>
-                    <BlockMenuItem
-                      onClick={() => this.insertItem(item)}
-                      selected={selected}
-                      icon={item.icon}
-                      title={item.title}
-                      shortcut={item.shortcut}
-                    ></BlockMenuItem>
-                  </ListItem>
-                );
-              })}
-              {items.length === 0 && (
-                <ListItem>
-                  <Empty>{dictionary.noResults}</Empty>
-                </ListItem>
-              )}
-            </List>
-          )}
-          {uploadImage && (
-            <VisuallyHidden>
-              <input
-                type="file"
-                ref={this.inputRef}
-                onChange={this.handleImagePicked}
-                accept="image/*"
-              />
-            </VisuallyHidden>
-          )}
+          {renderUserList}
         </Wrapper>
       </Portal>
     );
@@ -521,6 +421,7 @@ export const Wrapper = styled.div<{
   top?: number;
   bottom?: number;
   left?: number;
+  isMobileWidth?:boolean;
   isAbove: boolean;
 }>`
   color: ${props => props.theme.text};
@@ -535,7 +436,7 @@ export const Wrapper = styled.div<{
   background-color: ${props => props.theme.blockToolbarBackground};
   border-radius: 4px;
   box-shadow: rgba(0, 0, 0, 0.05) 0px 0px 0px 1px,
-    rgba(0, 0, 0, 0.08) 0px 4px 8px, rgba(0, 0, 0, 0.08) 0px 2px 4px;
+    rgba(0, 0, 0, 0) 0px 4px 8px, rgba(0, 0, 0, 0.08) 0px 2px 4px;
   opacity: 0;
   transform: scale(0.95);
   transition: opacity 150ms cubic-bezier(0.175, 0.885, 0.32, 1.275),
@@ -545,8 +446,8 @@ export const Wrapper = styled.div<{
   box-sizing: border-box;
   pointer-events: none;
   white-space: nowrap;
-  width: 300px;
-  max-height: 224px;
+  width: ${props => props.isMobileWidth ? `100%` : `300px`};
+  max-height: 160px;
   overflow: hidden;
   overflow-y: auto;
 
@@ -573,4 +474,4 @@ export const Wrapper = styled.div<{
   }
 `;
 
-export default BlockMenu;
+export default MentionsMenuQuery;

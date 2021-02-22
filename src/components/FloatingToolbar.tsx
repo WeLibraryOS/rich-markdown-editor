@@ -14,10 +14,10 @@ type Props = {
 };
 
 const defaultPosition = {
-  left: -1000,
+  left: 0,
   top: 0,
   offset: 0,
-  visible: false,
+  visible: true,
 };
 
 const useComponentSize = ref => {
@@ -82,58 +82,42 @@ function usePosition({ menuRef, isSelectingText, props }) {
     selectionBounds.right = selectionBounds.left = selectionBounds.left - 18;
   }
 
-  const isImageSelection =
-    selection.node && selection.node.type.name === "image";
-  // Images need their own positioning to get the toolbar in the center
-  if (isImageSelection) {
-    const element = view.nodeDOM(selection.from);
+  // calcluate the horizontal center of the selection
+  const halfSelection =
+    Math.abs(selectionBounds.right - selectionBounds.left) / 2;
+  const centerOfSelection = selectionBounds.left + halfSelection;
 
-    // Images are wrapped which impacts positioning - need to traverse through
-    // p > span > div.image
-    const imageElement = element.getElementsByTagName("img")[0];
-    const { left, top, width } = imageElement.getBoundingClientRect();
+  // position the menu so that it is centered over the selection except in
+  // the cases where it would extend off the edge of the screen. In these
+  // instances leave a margin
+  const margin = 12;
+  const left = Math.min(
+    window.innerWidth - menuWidth - margin,
+    Math.max(margin, centerOfSelection - menuWidth / 2)
+  );
+  const top = Math.min(
+    window.innerHeight - menuHeight - margin,
+    Math.max(margin, selectionBounds.top - menuHeight)
+  );
 
-    return {
-      left: Math.round(left + width / 2 + window.scrollX - menuWidth / 2),
-      top: Math.round(top + window.scrollY - menuHeight),
-      offset: 0,
-      visible: true,
-    };
-  } else {
-    // calcluate the horizontal center of the selection
-    const halfSelection =
-      Math.abs(selectionBounds.right - selectionBounds.left) / 2;
-    const centerOfSelection = selectionBounds.left + halfSelection;
+  // if the menu has been offset to not extend offscreen then we should adjust
+  // the position of the triangle underneath to correctly point to the center
+  // of the selection still
+  const offset = left - (centerOfSelection - menuWidth / 2);
 
-    // position the menu so that it is centered over the selection except in
-    // the cases where it would extend off the edge of the screen. In these
-    // instances leave a margin
-    const margin = 12;
-    const left = Math.min(
-      window.innerWidth - menuWidth - margin,
-      Math.max(margin, centerOfSelection - menuWidth / 2)
-    );
-    const top = Math.min(
-      window.innerHeight - menuHeight - margin,
-      Math.max(margin, selectionBounds.top - menuHeight)
-    );
-
-    // if the menu has been offset to not extend offscreen then we should adjust
-    // the position of the triangle underneath to correctly point to the center
-    // of the selection still
-    const offset = left - (centerOfSelection - menuWidth / 2);
-    return {
-      left: Math.round(left + window.scrollX),
-      top: Math.round(top + window.scrollY),
-      offset: Math.round(offset),
-      visible: true,
-    };
-  }
+  return {
+    left: Math.round(left + window.scrollX),
+    top: Math.round(top + window.scrollY),
+    offset: Math.round(offset),
+    visible: true,
+  };
 }
 
 function FloatingToolbar(props) {
   const menuRef = props.forwardedRef || React.createRef<HTMLDivElement>();
   const [isSelectingText, setSelectingText] = React.useState(false);
+
+  // console.log('FLOATING TOOLBAR', props);
   const position = usePosition({
     menuRef,
     isSelectingText,
@@ -163,19 +147,9 @@ function FloatingToolbar(props) {
   // only render children when state is updated to visible
   // to prevent gaining input focus before calculatePosition runs
   return (
-    <Portal>
-      <Wrapper
-        active={props.active && position.visible}
-        ref={menuRef}
-        offset={position.offset}
-        style={{
-          top: `${position.top}px`,
-          left: `${position.left}px`,
-        }}
-      >
+      <div ref={menuRef}>
         {position.visible && props.children}
-      </Wrapper>
-    </Portal>
+      </div>
   );
 }
 
@@ -186,7 +160,7 @@ const Wrapper = styled.div<{
   will-change: opacity, transform;
   padding: 8px 16px;
   position: absolute;
-  z-index: ${props => props.theme.zIndex + 100};
+  z-index: ${props => props.theme.zIndex + 9999999999999999};
   opacity: 0;
   background-color: ${props => props.theme.toolbarBackground};
   border-radius: 4px;

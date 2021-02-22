@@ -35,7 +35,8 @@ export default class Paragraph extends Node {
       node.childCount === 0 &&
       !state.inTable
     ) {
-      state.write("\\\n");
+      //changed since markdown renderers are different remarkable vs markdown-it
+      state.write("\n");
     } else {
       state.renderInline(node);
       state.closeBlock(node);

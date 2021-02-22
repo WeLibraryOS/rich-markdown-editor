@@ -18,11 +18,11 @@ type Props = {
   onClose: () => void;
 };
 
-function isActive(props: Props) {
+function isActive(props) {
   const { view } = props;
   const { selection } = view.state;
 
-  const paragraph = view.domAtPos(selection.from);
+  const paragraph = view.domAtPos(selection.$from.pos);
   return props.isActive && !!paragraph.node;
 }
 
@@ -119,12 +119,15 @@ export default class LinkToolbar extends React.Component<Props> {
 
   render() {
     const { onCreateLink, onClose, ...rest } = this.props;
-    const { selection } = this.props.view.state;
-    const active = isActive(this.props);
+    const selection = this.props.view.state.selection;
 
     return (
-      <FloatingToolbar ref={this.menuRef} active={active} {...rest}>
-        {active && (
+      <FloatingToolbar
+        ref={this.menuRef}
+        active={isActive(this.props)}
+        {...rest}
+      >
+        {isActive(this.props) && (
           <LinkEditor
             from={selection.from}
             to={selection.to}

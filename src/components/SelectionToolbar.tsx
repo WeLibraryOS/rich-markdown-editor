@@ -7,7 +7,6 @@ import getTableColMenuItems from "../menus/tableCol";
 import getTableRowMenuItems from "../menus/tableRow";
 import getTableMenuItems from "../menus/table";
 import getFormattingMenuItems from "../menus/formatting";
-import getImageMenuItems from "../menus/image";
 import FloatingToolbar from "./FloatingToolbar";
 import LinkEditor, { SearchResult } from "./LinkEditor";
 import Menu from "./Menu";
@@ -25,8 +24,6 @@ type Props = {
   tooltip: typeof React.Component | React.FC<any>;
   isTemplate: boolean;
   commands: Record<string, any>;
-  onOpen: () => void;
-  onClose: () => void;
   onSearchLink?: (term: string) => Promise<SearchResult[]>;
   onClickLink: (href: string, event: MouseEvent) => void;
   onCreateLink?: (title: string) => Promise<string>;
@@ -34,15 +31,12 @@ type Props = {
   view: EditorView;
 };
 
-function isVisible(props) {
+function isActive(props) {
   const { view } = props;
   const { selection } = view.state;
 
   if (!selection) return false;
   if (selection.empty) return false;
-  if (selection.node && selection.node.type.name === "image") {
-    return true;
-  }
   if (selection.node) return false;
 
   const slice = selection.content();
@@ -53,20 +47,6 @@ function isVisible(props) {
 }
 
 export default class SelectionToolbar extends React.Component<Props> {
-  isActive = false;
-
-  componentDidUpdate(): void {
-    const visible = isVisible(this.props);
-    if (this.isActive && !visible) {
-      this.isActive = false;
-      this.props.onClose();
-    }
-    if (!this.isActive && visible) {
-      this.isActive = true;
-      this.props.onOpen();
-    }
-  }
-
   handleOnCreateLink = async (title: string) => {
     const { dictionary, onCreateLink, view, onShowToast } = this.props;
 
@@ -133,8 +113,6 @@ export default class SelectionToolbar extends React.Component<Props> {
     const isTableSelection = colIndex !== undefined && rowIndex !== undefined;
     const link = isMarkActive(state.schema.marks.link)(state);
     const range = getMarkRange(selection.$from, state.schema.marks.link);
-    const isImageSelection =
-      selection.node && selection.node.type.name === "image";
 
     let items: MenuItem[] = [];
     if (isTableSelection) {
@@ -143,8 +121,6 @@ export default class SelectionToolbar extends React.Component<Props> {
       items = getTableColMenuItems(state, colIndex, dictionary);
     } else if (rowIndex !== undefined) {
       items = getTableRowMenuItems(state, rowIndex, dictionary);
-    } else if (isImageSelection) {
-      items = getImageMenuItems(state, dictionary);
     } else {
       items = getFormattingMenuItems(state, isTemplate, dictionary);
     }
@@ -154,8 +130,8 @@ export default class SelectionToolbar extends React.Component<Props> {
     }
 
     return (
-      <Portal>
-        <FloatingToolbar view={view} active={isVisible(this.props)}>
+      <>
+        {/* <FloatingToolbar view={view} active={isActive(this.props)}> */}
           {link && range ? (
             <LinkEditor
               dictionary={dictionary}
@@ -169,8 +145,8 @@ export default class SelectionToolbar extends React.Component<Props> {
           ) : (
             <Menu items={items} {...rest} />
           )}
-        </FloatingToolbar>
-      </Portal>
+        {/* </FloatingToolbar> */}
+      </>
     );
   }
 }

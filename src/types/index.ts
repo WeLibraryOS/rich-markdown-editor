@@ -9,7 +9,10 @@ export enum ToastType {
 export type MenuItem = {
   icon?: typeof React.Component | React.FC<any>;
   name?: string;
+  menutype?:string;
   title?: string;
+  className?:string;
+  options?:object;
   shortcut?: string;
   keywords?: string;
   tooltip?: string;
@@ -19,6 +22,6 @@ export type MenuItem = {
 };
 
 export type EmbedDescriptor = MenuItem & {
-  matcher: (url: string) => boolean | [] | RegExpMatchArray;
+  matcher: (url: string) => boolean | [];
   component: typeof React.Component | React.FC<any>;
 };

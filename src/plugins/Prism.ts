@@ -10,7 +10,6 @@ export const LANGUAGES = {
   css: "CSS",
   clike: "C",
   csharp: "C#",
-  go: "Go",
   markup: "HTML",
   java: "Java",
   javascript: "JavaScript",

@@ -16,30 +16,7 @@ export default class Embed extends Node {
         component: {},
         matches: {},
       },
-      parseDOM: [
-        {
-          tag: "iframe",
-          getAttrs: (dom: HTMLIFrameElement) => {
-            const { embeds } = this.editor.props;
-            const href = dom.getAttribute("src") || "";
-
-            if (embeds) {
-              for (const embed of embeds) {
-                const matches = embed.matcher(href);
-                if (matches) {
-                  return {
-                    href,
-                    component: embed.component,
-                    matches,
-                  };
-                }
-              }
-            }
-
-            return {};
-          },
-        },
-      ],
+      parseDOM: [{ tag: "iframe" }],
       toDOM: node => [
         "iframe",
         { src: node.attrs.href, contentEditable: false },

@@ -19,6 +19,7 @@ import { SearchResult } from "./components/LinkEditor";
 import { EmbedDescriptor, ToastType } from "./types";
 import SelectionToolbar from "./components/SelectionToolbar";
 import BlockMenu from "./components/BlockMenu";
+import MentionsMenu from './components/MentionsMenu';
 import LinkToolbar from "./components/LinkToolbar";
 import Tooltip from "./components/Tooltip";
 import Extension from "./lib/Extension";
@@ -49,6 +50,7 @@ import Table from "./nodes/Table";
 import TableCell from "./nodes/TableCell";
 import TableHeadCell from "./nodes/TableHeadCell";
 import TableRow from "./nodes/TableRow";
+import Mention from './nodes/Mention';
 
 // marks
 import Bold from "./marks/Bold";
@@ -62,13 +64,14 @@ import Underline from "./marks/Underline";
 
 // plugins
 import BlockMenuTrigger from "./plugins/BlockMenuTrigger";
+import MentionMenuTrigger from "./plugins/MentionMenuTrigger";
 import History from "./plugins/History";
 import Keys from "./plugins/Keys";
-import MaxLength from "./plugins/MaxLength";
 import Placeholder from "./plugins/Placeholder";
 import SmartText from "./plugins/SmartText";
 import TrailingNode from "./plugins/TrailingNode";
 import MarkdownPaste from "./plugins/MarkdownPaste";
+import Suggestions from "./plugins/Suggestions";
 
 export { schema, parser, serializer } from "./server";
 
@@ -88,16 +91,14 @@ export type Props = {
   dictionary?: Partial<typeof baseDictionary>;
   dark?: boolean;
   theme?: typeof theme;
+  minimal?: boolean;
   template?: boolean;
   headingsOffset?: number;
-  maxLength?: number;
   scrollTo?: string;
   handleDOMEvents?: {
     [name: string]: (view: EditorView, event: Event) => boolean;
   };
   uploadImage?: (file: File) => Promise<string>;
-  onBlur?: () => void;
-  onFocus?: () => void;
   onSave?: ({ done: boolean }) => void;
   onCancel?: () => void;
   onChange: (value: () => string) => void;
@@ -117,16 +118,18 @@ export type Props = {
 };
 
 type State = {
-  isEditorFocused: boolean;
-  selectionMenuOpen: boolean;
   blockMenuOpen: boolean;
+  mentionsMenuOpen: boolean;
   linkMenuOpen: boolean;
+  mentionsMenuSearch:string;
   blockMenuSearch: string;
 };
 
 type Step = {
-  slice?: Slice;
+  slice: Slice;
 };
+
+
 
 class RichMarkdownEditor extends React.PureComponent<Props, State> {
   static defaultProps = {
@@ -142,19 +145,19 @@ class RichMarkdownEditor extends React.PureComponent<Props, State> {
       window.open(href, "_blank");
     },
     embeds: [],
+    className: "prosemirror-full",
     extensions: [],
     tooltip: Tooltip,
   };
 
   state = {
-    isEditorFocused: false,
-    selectionMenuOpen: false,
     blockMenuOpen: false,
+    mentionsMenuOpen:false,
     linkMenuOpen: false,
+    mentionsMenuSearch:" ",
     blockMenuSearch: "",
   };
 
-  isBlurred: boolean;
   extensions: ExtensionManager;
   element?: HTMLElement | null;
   view: EditorView;
@@ -209,32 +212,6 @@ class RichMarkdownEditor extends React.PureComponent<Props, State> {
     if (prevProps.readOnly && !this.props.readOnly && this.props.autoFocus) {
       this.focusAtEnd();
     }
-
-    if (
-      !this.isBlurred &&
-      !this.state.isEditorFocused &&
-      !this.state.blockMenuOpen &&
-      !this.state.linkMenuOpen &&
-      !this.state.selectionMenuOpen
-    ) {
-      this.isBlurred = true;
-      if (this.props.onBlur) {
-        this.props.onBlur();
-      }
-    }
-
-    if (
-      this.isBlurred &&
-      (this.state.isEditorFocused ||
-        this.state.blockMenuOpen ||
-        this.state.linkMenuOpen ||
-        this.state.selectionMenuOpen)
-    ) {
-      this.isBlurred = false;
-      if (this.props.onFocus) {
-        this.props.onFocus();
-      }
-    }
   }
 
   init() {
@@ -277,6 +254,7 @@ class RichMarkdownEditor extends React.PureComponent<Props, State> {
         new CheckboxItem(),
         new BulletList(),
         new Embed(),
+        new Mention(),
         new ListItem(),
         new Notice({
           dictionary,
@@ -305,7 +283,7 @@ class RichMarkdownEditor extends React.PureComponent<Props, State> {
         new TableRow(),
         new Bold(),
         new Code(),
-        new Highlight(),
+        // new Highlight(),
         new Italic(),
         new TemplatePlaceholder(),
         new Underline(),
@@ -322,11 +300,19 @@ class RichMarkdownEditor extends React.PureComponent<Props, State> {
         new TrailingNode(),
         new MarkdownPaste(),
         new Keys({
-          onBlur: this.handleEditorBlur,
-          onFocus: this.handleEditorFocus,
           onSave: this.handleSave,
           onSaveAndExit: this.handleSaveAndExit,
           onCancel: this.props.onCancel,
+        }),
+        // new Suggestions({
+        //   onChange: this.handleSuggestionChange,
+        //   onExit: this.handleCloseMentionsMenu,
+        //   onEnter: this.handleOpenMentionsMenu,
+        // }),
+        new MentionMenuTrigger({
+          dictionary,
+          onOpen: this.handleOpenMentionsMenu,
+          onClose: this.handleCloseMentionsMenu,
         }),
         new BlockMenuTrigger({
           dictionary,
@@ -335,9 +321,6 @@ class RichMarkdownEditor extends React.PureComponent<Props, State> {
         }),
         new Placeholder({
           placeholder: this.props.placeholder,
-        }),
-        new MaxLength({
-          maxLength: this.props.maxLength,
         }),
         ...this.props.extensions,
       ],
@@ -446,8 +429,9 @@ class RichMarkdownEditor extends React.PureComponent<Props, State> {
     const isEditingCheckbox = tr => {
       return tr.steps.some(
         (step: Step) =>
-          step.slice?.content?.firstChild?.type.name ===
-          this.schema.nodes.checkbox_item.name
+          step.slice.content.firstChild &&
+          step.slice.content.firstChild.type.name ===
+            this.schema.nodes.checkbox_item.name
       );
     };
 
@@ -480,9 +464,6 @@ class RichMarkdownEditor extends React.PureComponent<Props, State> {
         this.forceUpdate();
       },
     });
-
-    // Tell third-party libraries and screen-readers that this is an input
-    view.dom.setAttribute("role", "textbox");
 
     return view;
   }
@@ -527,24 +508,8 @@ class RichMarkdownEditor extends React.PureComponent<Props, State> {
     }
   };
 
-  handleEditorBlur = () => {
-    this.setState({ isEditorFocused: false });
-  };
-
-  handleEditorFocus = () => {
-    this.setState({ isEditorFocused: true });
-  };
-
-  handleOpenSelectionMenu = () => {
-    this.setState({ blockMenuOpen: false, selectionMenuOpen: true });
-  };
-
-  handleCloseSelectionMenu = () => {
-    this.setState({ selectionMenuOpen: false });
-  };
-
   handleOpenLinkMenu = () => {
-    this.setState({ blockMenuOpen: false, linkMenuOpen: true });
+    this.setState({ linkMenuOpen: true });
   };
 
   handleCloseLinkMenu = () => {
@@ -559,6 +524,20 @@ class RichMarkdownEditor extends React.PureComponent<Props, State> {
     if (!this.state.blockMenuOpen) return;
     this.setState({ blockMenuOpen: false });
   };
+
+  handleSuggestionChange=()=>{
+    // console.log('handleSugegstionChange');
+  }
+
+  handleCloseMentionsMenu =()=>{
+    if (!this.state.mentionsMenuOpen) return;
+    this.setState({ mentionsMenuOpen: false });
+  }
+
+  handleOpenMentionsMenu = (search:string = ' ') => {
+    console.log('handleOpenMentionsMenu', search);
+    this.setState({ mentionsMenuOpen: true, mentionsMenuSearch: search });
+  }
 
   handleSelectRow = (index: number, state: EditorState) => {
     this.view.dispatch(selectRow(index)(state.tr));
@@ -635,10 +614,10 @@ class RichMarkdownEditor extends React.PureComponent<Props, State> {
       style,
       tooltip,
       className,
+      minimal,
       onKeyDown,
     } = this.props;
     const dictionary = this.dictionary(this.props.dictionary);
-
     return (
       <Flex
         onKeyDown={onKeyDown}
@@ -650,25 +629,20 @@ class RichMarkdownEditor extends React.PureComponent<Props, State> {
       >
         <ThemeProvider theme={this.theme()}>
           <React.Fragment>
-            <StyledEditor
-              readOnly={readOnly}
-              readOnlyWriteCheckboxes={readOnlyWriteCheckboxes}
-              ref={ref => (this.element = ref)}
-            />
-            {!readOnly && this.view && (
+          {!readOnly && this.view && (
               <React.Fragment>
-                <SelectionToolbar
-                  view={this.view}
-                  dictionary={dictionary}
-                  commands={this.commands}
-                  isTemplate={this.props.template === true}
-                  onOpen={this.handleOpenSelectionMenu}
-                  onClose={this.handleCloseSelectionMenu}
-                  onSearchLink={this.props.onSearchLink}
-                  onClickLink={this.props.onClickLink}
-                  onCreateLink={this.props.onCreateLink}
-                  tooltip={tooltip}
-                />
+              
+                  <SelectionToolbar
+                    view={this.view}
+                    dictionary={dictionary}
+                    commands={this.commands}
+                    isTemplate={this.props.template === true}
+                    onSearchLink={this.props.onSearchLink}
+                    onClickLink={this.props.onClickLink}
+                    onCreateLink={this.props.onCreateLink}
+                    tooltip={tooltip}
+                  />
+               
                 <LinkToolbar
                   view={this.view}
                   dictionary={dictionary}
@@ -694,8 +668,30 @@ class RichMarkdownEditor extends React.PureComponent<Props, State> {
                   onShowToast={this.props.onShowToast}
                   embeds={this.props.embeds}
                 />
+             
+                <MentionsMenu
+                  view={this.view}
+                  commands={this.commands}
+                  dictionary={dictionary}
+                  isActive={this.state.mentionsMenuOpen}
+                  search={this.state.mentionsMenuSearch}
+                  onClose={this.handleCloseMentionsMenu}
+                  uploadImage={this.props.uploadImage}
+                  onLinkToolbarOpen={this.handleOpenLinkMenu}
+                  onImageUploadStart={this.props.onImageUploadStart}
+                  onImageUploadStop={this.props.onImageUploadStop}
+                  onShowToast={this.props.onShowToast}
+                  embeds={this.props.embeds}
+                />
               </React.Fragment>
             )}
+            <StyledEditor
+              readOnly={readOnly}
+              className={"prosemirror-editor-container"}
+              readOnlyWriteCheckboxes={readOnlyWriteCheckboxes}
+              ref={ref => (this.element = ref)}
+            />
+
           </React.Fragment>
         </ThemeProvider>
       </Flex>
@@ -703,822 +699,792 @@ class RichMarkdownEditor extends React.PureComponent<Props, State> {
   };
 }
 
-const StyledEditor = styled("div")<{
+
+
+const TestComp = props => {
+  return(<div><h1>test component</h1></div>)
+};
+
+const StyledEditor = styled("div").attrs(props => ({
+  className: props.className
+}))<{
   readOnly?: boolean;
   readOnlyWriteCheckboxes?: boolean;
 }>`
-  color: ${props => props.theme.text};
-  background: ${props => props.theme.background};
-  font-family: ${props => props.theme.fontFamily};
-  font-weight: ${props => props.theme.fontWeight};
-  font-size: 1em;
-  line-height: 1.7em;
-  width: 100%;
-
-  .ProseMirror {
-    position: relative;
-    outline: none;
-    word-wrap: break-word;
-    white-space: pre-wrap;
-    white-space: break-spaces;
-    -webkit-font-variant-ligatures: none;
-    font-variant-ligatures: none;
-    font-feature-settings: "liga" 0; /* the above doesn't seem to work in Edge */
-  }
-
-  pre {
-    white-space: pre-wrap;
-  }
-
-  li {
-    position: relative;
-  }
-
-  .image {
-    text-align: center;
-    max-width: 100%;
-    clear: both;
-
-    img {
-      pointer-events: ${props => (props.readOnly ? "initial" : "none")};
-      display: inline-block;
-      max-width: 100%;
-      max-height: 75vh;
-    }
-  }
-
-  .image.placeholder {
-    position: relative;
-    background: ${props => props.theme.background};
-    img {
-      opacity: 0.5;
-    }
-  }
-
-  .image-right-50 {
-    float: right;
-    width: 50%;
-    margin-left: 2em;
-    margin-bottom: 1em;
-    clear: initial;
-  }
-
-  .image-left-50 {
-    float: left;
-    width: 50%;
-    margin-right: 2em;
-    margin-bottom: 1em;
-    clear: initial;
-  }
-
-  .ProseMirror-hideselection *::selection {
-    background: transparent;
-  }
-  .ProseMirror-hideselection *::-moz-selection {
-    background: transparent;
-  }
-  .ProseMirror-hideselection {
-    caret-color: transparent;
-  }
-
-  .ProseMirror-selectednode {
-    outline: 2px solid
-      ${props => (props.readOnly ? "transparent" : props.theme.selected)};
-  }
-
-  /* Make sure li selections wrap around markers */
-
-  li.ProseMirror-selectednode {
-    outline: none;
-  }
-
-  li.ProseMirror-selectednode:after {
-    content: "";
-    position: absolute;
-    left: -32px;
-    right: -2px;
-    top: -2px;
-    bottom: -2px;
-    border: 2px solid ${props => props.theme.selected};
+.placeholder {
+  &:before {
+    display: block;
+    content: ${props => (props.readOnly ? "" : "attr(data-empty-text)")};
     pointer-events: none;
-  }
-
-  .ProseMirror[contenteditable="false"] {
-    .caption {
-      pointer-events: none;
-    }
-    .caption:empty {
-      visibility: hidden;
-    }
-  }
-
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6 {
-    margin: 1em 0 0.5em;
-    font-weight: 500;
-    cursor: default;
-
-    &:not(.placeholder):before {
-      display: ${props => (props.readOnly ? "none" : "inline-block")};
-      font-family: ${props => props.theme.fontFamilyMono};
-      color: ${props => props.theme.textSecondary};
-      font-size: 13px;
-      line-height: 0;
-      margin-left: -24px;
-      width: 24px;
-    }
-
-    &:hover {
-      .heading-anchor {
-        opacity: 1;
-      }
-    }
-  }
-  .heading-content {
-    &:before {
-      content: "​";
-      display: inline;
-    }
-  }
-  .heading-name {
-    color: ${props => props.theme.text};
-
-    &:hover {
-      text-decoration: none;
-    }
-  }
-
-  a:first-child {
-    h1,
-    h2,
-    h3,
-    h4,
-    h5,
-    h6 {
-      margin-top: 0;
-    }
-  }
-
-  h1:not(.placeholder):before {
-    content: "H1";
-  }
-  h2:not(.placeholder):before {
-    content: "H2";
-  }
-  h3:not(.placeholder):before {
-    content: "H3";
-  }
-  h4:not(.placeholder):before {
-    content: "H4";
-  }
-  h5:not(.placeholder):before {
-    content: "H5";
-  }
-  h6:not(.placeholder):before {
-    content: "H6";
-  }
-
-  .with-emoji {
-    margin-left: -1em;
-  }
-
-  .heading-anchor {
-    opacity: 0;
-    display: ${props => (props.readOnly ? "inline-block" : "none")};
-    color: ${props => props.theme.textSecondary};
-    cursor: pointer;
-    background: none;
-    border: 0;
-    outline: none;
-    padding: 2px 12px 2px 4px;
-    margin: 0;
-    transition: opacity 100ms ease-in-out;
-    font-family: ${props => props.theme.fontFamilyMono};
-    font-size: 22px;
-    line-height: 0;
-    margin-left: -24px;
-    width: 24px;
-
-    &:focus,
-    &:hover {
-      color: ${props => props.theme.text};
-    }
-  }
-
-  .placeholder {
-    &:before {
-      display: block;
-      content: ${props => (props.readOnly ? "" : "attr(data-empty-text)")};
-      pointer-events: none;
-      height: 0;
-      color: ${props => props.theme.placeholder};
-    }
-  }
-
-  @media print {
-    .placeholder {
-      display: none;
-    }
-  }
-
-  .notice-block {
-    display: flex;
-    align-items: center;
-    background: ${props => props.theme.noticeInfoBackground};
-    color: ${props => props.theme.noticeInfoText};
-    border-radius: 4px;
-    padding: 8px 16px;
-    margin: 8px 0;
-
-    a {
-      color: ${props => props.theme.noticeInfoText};
-    }
-
-    a:not(.heading-name) {
-      text-decoration: underline;
-    }
-  }
-
-  .notice-block .content {
-    flex-grow: 1;
-  }
-
-  .notice-block .icon {
-    width: 24px;
-    height: 24px;
-    align-self: flex-start;
-    margin-right: 4px;
-    position: relative;
-    top: 1px;
-  }
-
-  .notice-block.tip {
-    background: ${props => props.theme.noticeTipBackground};
-    color: ${props => props.theme.noticeTipText};
-
-    a {
-      color: ${props => props.theme.noticeTipText};
-    }
-  }
-
-  .notice-block.warning {
-    background: ${props => props.theme.noticeWarningBackground};
-    color: ${props => props.theme.noticeWarningText};
-
-    a {
-      color: ${props => props.theme.noticeWarningText};
-    }
-  }
-
-  blockquote {
-    margin: 0;
-    padding-left: 1em;
-    font-style: italic;
-    overflow: hidden;
-    position: relative;
-
-    &:before {
-      content: "";
-      display: inline-block;
-      width: 3px;
-      border-radius: 1px;
-      position: absolute;
-      margin-left: -16px;
-      top: 0;
-      bottom: 0;
-      background: ${props => props.theme.quote};
-    }
-  }
-
-  b,
-  strong {
-    font-weight: 600;
-  }
-
-  .template-placeholder {
-    color: ${props => props.theme.placeholder};
-    border-bottom: 1px dotted ${props => props.theme.placeholder};
-    border-radius: 2px;
-    cursor: text;
-
-    &:hover {
-      border-bottom: 1px dotted
-        ${props =>
-          props.readOnly ? props.theme.placeholder : props.theme.textSecondary};
-    }
-  }
-
-  p {
-    margin: 0;
-  }
-
-  a {
-    color: ${props => props.theme.link};
-  }
-
-  a:hover {
-    text-decoration: ${props => (props.readOnly ? "underline" : "none")};
-  }
-
-  ul,
-  ol {
-    margin: 0 0.1em;
-    padding: 0 0 0 1.2em;
-
-    ul,
-    ol {
-      margin: 0;
-    }
-  }
-
-  ol ol {
-    list-style: lower-alpha;
-  }
-
-  ol ol ol {
-    list-style: lower-roman;
-  }
-
-  ul.checkbox_list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-  }
-
-  ul.checkbox_list li {
-    display: flex;
-  }
-
-  ul.checkbox_list li.checked > div > p {
-    color: ${props => props.theme.textSecondary};
-    text-decoration: line-through;
-  }
-
-  ul.checkbox_list li input {
-    pointer-events: ${props =>
-      props.readOnly && !props.readOnlyWriteCheckboxes ? "none" : "initial"};
-    opacity: ${props =>
-      props.readOnly && !props.readOnlyWriteCheckboxes ? 0.75 : 1};
-    margin: 0.5em 0.5em 0 0;
-    width: 14px;
-    height: 14px;
-  }
-
-  li p:first-child {
-    margin: 0;
-    word-break: break-word;
-  }
-
-  hr {
     height: 0;
-    border: 0;
-    border-top: 1px solid ${props => props.theme.horizontalRule};
+    color: ${props => props.theme.placeholder};
   }
+}
 
-  code {
-    border-radius: 4px;
-    border: 1px solid ${props => props.theme.codeBorder};
-    padding: 3px 4px;
-    font-family: ${props => props.theme.fontFamilyMono};
-    font-size: 85%;
-  }
-
-  mark {
-    border-radius: 1px;
-    color: ${props => props.theme.textHighlightForeground};
-    background: ${props => props.theme.textHighlight};
-
-    a {
-      color: ${props => props.theme.textHighlightForeground};
-    }
-  }
-
-  .code-block,
-  .notice-block {
-    position: relative;
-
-    select,
-    button {
-      background: ${props => props.theme.blockToolbarBackground};
-      color: ${props => props.theme.blockToolbarItem};
-      border-width: 1px;
-      font-size: 13px;
-      display: none;
-      position: absolute;
-      border-radius: 4px;
-      padding: 2px;
-      z-index: 1;
-      top: 4px;
-      right: 4px;
-    }
-
-    button {
-      padding: 2px 4px;
-    }
-
-    &:hover {
-      select {
-        display: ${props => (props.readOnly ? "none" : "inline")};
-      }
-
-      button {
-        display: ${props => (props.readOnly ? "inline" : "none")};
-      }
-    }
-
-    select:focus,
-    select:active {
-      display: inline;
-    }
-  }
-
-  pre {
-    display: block;
-    overflow-x: auto;
-    padding: 0.75em 1em;
-    line-height: 1.4em;
-    position: relative;
-    background: ${props => props.theme.codeBackground};
-    border-radius: 4px;
-    border: 1px solid ${props => props.theme.codeBorder};
-
-    -webkit-font-smoothing: initial;
-    font-family: ${props => props.theme.fontFamilyMono};
-    font-size: 13px;
-    direction: ltr;
-    text-align: left;
-    white-space: pre;
-    word-spacing: normal;
-    word-break: normal;
-    -moz-tab-size: 4;
-    -o-tab-size: 4;
-    tab-size: 4;
-    -webkit-hyphens: none;
-    -moz-hyphens: none;
-    -ms-hyphens: none;
-    hyphens: none;
-    color: ${props => props.theme.code};
-    margin: 0;
-
-    code {
-      font-size: 13px;
-      background: none;
-      padding: 0;
-      border: 0;
-    }
-  }
-
-  .token.comment,
-  .token.prolog,
-  .token.doctype,
-  .token.cdata {
-    color: ${props => props.theme.codeComment};
-  }
-
-  .token.punctuation {
-    color: ${props => props.theme.codePunctuation};
-  }
-
-  .token.namespace {
-    opacity: 0.7;
-  }
-
-  .token.operator,
-  .token.boolean,
-  .token.number {
-    color: ${props => props.theme.codeNumber};
-  }
-
-  .token.property {
-    color: ${props => props.theme.codeProperty};
-  }
-
-  .token.tag {
-    color: ${props => props.theme.codeTag};
-  }
-
-  .token.string {
-    color: ${props => props.theme.codeString};
-  }
-
-  .token.selector {
-    color: ${props => props.theme.codeSelector};
-  }
-
-  .token.attr-name {
-    color: ${props => props.theme.codeAttr};
-  }
-
-  .token.entity,
-  .token.url,
-  .language-css .token.string,
-  .style .token.string {
-    color: ${props => props.theme.codeEntity};
-  }
-
-  .token.attr-value,
-  .token.keyword,
-  .token.control,
-  .token.directive,
-  .token.unit {
-    color: ${props => props.theme.codeKeyword};
-  }
-
-  .token.function {
-    color: ${props => props.theme.codeFunction};
-  }
-
-  .token.statement,
-  .token.regex,
-  .token.atrule {
-    color: ${props => props.theme.codeStatement};
-  }
-
-  .token.placeholder,
-  .token.variable {
-    color: ${props => props.theme.codePlaceholder};
-  }
-
-  .token.deleted {
-    text-decoration: line-through;
-  }
-
-  .token.inserted {
-    border-bottom: 1px dotted ${props => props.theme.codeInserted};
-    text-decoration: none;
-  }
-
-  .token.italic {
-    font-style: italic;
-  }
-
-  .token.important,
-  .token.bold {
-    font-weight: bold;
-  }
-
-  .token.important {
-    color: ${props => props.theme.codeImportant};
-  }
-
-  .token.entity {
-    cursor: help;
-  }
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    border-radius: 4px;
-    margin-top: 1em;
-    box-sizing: border-box;
-
-    * {
-      box-sizing: border-box;
-    }
-
-    tr {
-      position: relative;
-      border-bottom: 1px solid ${props => props.theme.tableDivider};
-    }
-
-    th {
-      background: ${props => props.theme.tableHeaderBackground};
-    }
-
-    td,
-    th {
-      position: relative;
-      vertical-align: top;
-      border: 1px solid ${props => props.theme.tableDivider};
-      position: relative;
-      padding: 4px 8px;
-      text-align: left;
-      min-width: 100px;
-    }
-
-    .selectedCell {
-      background: ${props =>
-        props.readOnly ? "inherit" : props.theme.tableSelectedBackground};
-
-      /* fixes Firefox background color painting over border:
-       * https://bugzilla.mozilla.org/show_bug.cgi?id=688556 */
-      background-clip: padding-box;
-    }
-
-    .grip-column {
-      /* usage of ::after for all of the table grips works around a bug in
-       * prosemirror-tables that causes Safari to hang when selecting a cell
-       * in an empty table:
-       * https://github.com/ProseMirror/prosemirror/issues/947 */
-      &::after {
-        content: "";
-        cursor: pointer;
-        position: absolute;
-        top: -16px;
-        left: 0;
-        width: 100%;
-        height: 12px;
-        background: ${props => props.theme.tableDivider};
-        border-bottom: 3px solid ${props => props.theme.background};
-        display: ${props => (props.readOnly ? "none" : "block")};
-      }
-
-      &:hover::after {
-        background: ${props => props.theme.text};
-      }
-      &.first::after {
-        border-top-left-radius: 3px;
-      }
-      &.last::after {
-        border-top-right-radius: 3px;
-      }
-      &.selected::after {
-        background: ${props => props.theme.tableSelected};
-      }
-    }
-
-    .grip-row {
-      &::after {
-        content: "";
-        cursor: pointer;
-        position: absolute;
-        left: -16px;
-        top: 0;
-        height: 100%;
-        width: 12px;
-        background: ${props => props.theme.tableDivider};
-        border-right: 3px solid ${props => props.theme.background};
-        display: ${props => (props.readOnly ? "none" : "block")};
-      }
-
-      &:hover::after {
-        background: ${props => props.theme.text};
-      }
-      &.first::after {
-        border-top-left-radius: 3px;
-      }
-      &.last::after {
-        border-bottom-left-radius: 3px;
-      }
-      &.selected::after {
-        background: ${props => props.theme.tableSelected};
-      }
-    }
-
-    .grip-table {
-      &::after {
-        content: "";
-        cursor: pointer;
-        background: ${props => props.theme.tableDivider};
-        width: 13px;
-        height: 13px;
-        border-radius: 13px;
-        border: 2px solid ${props => props.theme.background};
-        position: absolute;
-        top: -18px;
-        left: -18px;
-        display: ${props => (props.readOnly ? "none" : "block")};
-      }
-
-      &:hover::after {
-        background: ${props => props.theme.text};
-      }
-      &.selected::after {
-        background: ${props => props.theme.tableSelected};
-      }
-    }
-  }
-
-  .scrollable-wrapper {
-    position: relative;
-    margin: 0.5em 0px;
-    scrollbar-width: thin;
-    scrollbar-color: transparent transparent;
-
-    &:hover {
-      scrollbar-color: ${props => props.theme.scrollbarThumb}
-        ${props => props.theme.scrollbarBackground};
-    }
-
-    & ::-webkit-scrollbar {
-      height: 14px;
-      background-color: transparent;
-    }
-
-    &:hover ::-webkit-scrollbar {
-      background-color: ${props => props.theme.scrollbarBackground};
-    }
-
-    & ::-webkit-scrollbar-thumb {
-      background-color: transparent;
-      border: 3px solid transparent;
-      border-radius: 7px;
-    }
-
-    &:hover ::-webkit-scrollbar-thumb {
-      background-color: ${props => props.theme.scrollbarThumb};
-      border-color: ${props => props.theme.scrollbarBackground};
-    }
-  }
-
-  .scrollable {
-    overflow-y: hidden;
-    overflow-x: auto;
-    padding-left: 1em;
-    margin-left: -1em;
-    border-left: 1px solid transparent;
-    border-right: 1px solid transparent;
-    transition: border 250ms ease-in-out 0s;
-  }
-
-  .scrollable-shadow {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: -1em;
-    width: 16px;
-    transition: box-shadow 250ms ease-in-out;
-    border: 0px solid transparent;
-    border-left-width: 1em;
-    pointer-events: none;
-
-    &.left {
-      box-shadow: 16px 0 16px -16px inset rgba(0, 0, 0, 0.25);
-      border-left: 1em solid ${props => props.theme.background};
-    }
-
-    &.right {
-      right: 0;
-      left: auto;
-      box-shadow: -16px 0 16px -16px inset rgba(0, 0, 0, 0.25);
-    }
-  }
-
-  .block-menu-trigger {
-    display: ${props => (props.readOnly ? "none" : "inline")};
-    width: 24px;
-    height: 24px;
-    color: ${props => props.theme.textSecondary};
-    background: none;
-    position: absolute;
-    transition: color 150ms cubic-bezier(0.175, 0.885, 0.32, 1.275),
-      transform 150ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    outline: none;
-    border: 0;
-    padding: 0;
-    margin-top: 1px;
-    margin-left: -24px;
-
-    &:hover,
-    &:focus {
-      cursor: pointer;
-      transform: scale(1.2);
-      color: ${props => props.theme.text};
-    }
-  }
-
-  @media print {
-    .block-menu-trigger {
-      display: none;
-    }
-  }
-
-  .ProseMirror-gapcursor {
-    display: none;
-    pointer-events: none;
-    position: absolute;
-  }
-
-  .ProseMirror-gapcursor:after {
-    content: "";
-    display: block;
-    position: absolute;
-    top: -2px;
-    width: 20px;
-    border-top: 1px solid ${props => props.theme.cursor};
-    animation: ProseMirror-cursor-blink 1.1s steps(2, start) infinite;
-  }
-
-  @keyframes ProseMirror-cursor-blink {
-    to {
-      visibility: hidden;
-    }
-  }
-
-  .ProseMirror-focused .ProseMirror-gapcursor {
-    display: block;
-  }
-
-  @media print {
-    em,
-    blockquote {
-      font-family: "SF Pro Text", ${props => props.theme.fontFamily};
-    }
-  }
+.heading-anchor {
+  display:none;
+}
 `;
 
+// color: ${props => props.theme.text};
+//   background: ${props => props.theme.background};
+//   font-family: ${props => props.theme.fontFamily};
+//   font-weight: ${props => props.theme.fontWeight};
+//   font-size: 1em;
+//   line-height: 1.7em;
+//   width: 100%;
+
+//   .ProseMirror {
+//     position: relative;
+//     outline: none;
+//     word-wrap: break-word;
+//     white-space: pre-wrap;
+//     white-space: break-spaces;
+//     -webkit-font-variant-ligatures: none;
+//     font-variant-ligatures: none;
+//     font-feature-settings: "liga" 0; /* the above doesn't seem to work in Edge */
+//   }
+
+//   pre {
+//     white-space: pre-wrap;
+//   }
+
+//   li {
+//     position: relative;
+//   }
+
+//   img {
+//     max-width: 100%;
+//   }
+
+//   .image {
+//     text-align: center;
+
+//     img {
+//       pointer-events: ${props => (props.readOnly ? "initial" : "none")};
+//     }
+//   }
+
+//   .image.placeholder {
+//     position: relative;
+//     background: ${props => props.theme.background};
+
+//     img {
+//       opacity: 0.5;
+//     }
+//   }
+
+//   .ProseMirror-hideselection *::selection {
+//     background: transparent;
+//   }
+//   .ProseMirror-hideselection *::-moz-selection {
+//     background: transparent;
+//   }
+//   .ProseMirror-hideselection {
+//     caret-color: transparent;
+//   }
+
+//   .ProseMirror-selectednode {
+//     outline: 2px solid
+//       ${props => (props.readOnly ? "transparent" : props.theme.selected)};
+//   }
+
+//   /* Make sure li selections wrap around markers */
+
+//   li.ProseMirror-selectednode {
+//     outline: none;
+//   }
+
+//   li.ProseMirror-selectednode:after {
+//     content: "";
+//     position: absolute;
+//     left: -32px;
+//     right: -2px;
+//     top: -2px;
+//     bottom: -2px;
+//     border: 2px solid ${props => props.theme.selected};
+//     pointer-events: none;
+//   }
+
+//   h1,
+//   h2,
+//   h3,
+//   h4,
+//   h5,
+//   h6 {
+//     margin: 1em 0 0.5em;
+//     font-weight: 500;
+//     cursor: default;
+
+//     &:not(.placeholder):before {
+//       display: ${props => (props.readOnly ? "none" : "block")};
+//       position: absolute;
+//       font-family: ${props => props.theme.fontFamilyMono};
+//       color: ${props => props.theme.textSecondary};
+//       font-size: 13px;
+//       left: -24px;
+//     }
+
+//     &:hover {
+//       .heading-anchor {
+//         opacity: 1;
+//       }
+//     }
+//   }
+
+//   .heading-name {
+//     color: ${props => props.theme.text};
+
+//     &:hover {
+//       text-decoration: none;
+//     }
+//   }
+
+//   a:first-child {
+//     h1,
+//     h2,
+//     h3,
+//     h4,
+//     h5,
+//     h6 {
+//       margin-top: 0;
+//     }
+//   }
+
+//   h1:not(.placeholder):before {
+//     content: "H1";
+//     line-height: 3em;
+//   }
+//   h2:not(.placeholder):before {
+//     content: "H2";
+//     line-height: 2.8em;
+//   }
+//   h3:not(.placeholder):before {
+//     content: "H3";
+//     line-height: 2.3em;
+//   }
+//   h4:not(.placeholder):before {
+//     content: "H4";
+//     line-height: 2.2em;
+//   }
+//   h5:not(.placeholder):before {
+//     content: "H5";
+//   }
+//   h6:not(.placeholder):before {
+//     content: "H6";
+//   }
+
+//   .with-emoji {
+//     margin-left: -1em;
+//   }
+
+  // .heading-anchor {
+  //   opacity: 0;
+  //   display: ${props => (props.readOnly ? "block" : "none")};
+  //   color: ${props => props.theme.textSecondary};
+  //   cursor: pointer;
+  //   background: none;
+  //   border: 0;
+  //   outline: none;
+  //   padding: 2px 12px 2px 4px;
+  //   margin: 0;
+  //   position: absolute;
+  //   transition: opacity 100ms ease-in-out;
+  //   font-family: ${props => props.theme.fontFamilyMono};
+  //   font-size: 22px;
+  //   left: -1.3em;
+
+//     &:focus,
+//     &:hover {
+//       color: ${props => props.theme.text};
+//     }
+//   }
+
+  // .placeholder {
+  //   &:before {
+  //     display: block;
+  //     content: ${props => (props.readOnly ? "" : "attr(data-empty-text)")};
+  //     pointer-events: none;
+  //     height: 0;
+  //     color: ${props => props.theme.placeholder};
+  //   }
+  // }
+
+//   @media print {
+//     .placeholder {
+//       display: none;
+//     }
+//   }
+
+//   .notice-block {
+//     display: flex;
+//     align-items: center;
+//     background: ${props => props.theme.noticeInfoBackground};
+//     color: ${props => props.theme.noticeInfoText};
+//     border-radius: 4px;
+//     padding: 8px 16px;
+//     margin: 8px 0;
+
+//     a {
+//       color: ${props => props.theme.noticeInfoText};
+//     }
+
+//     a:not(.heading-name) {
+//       text-decoration: underline;
+//     }
+//   }
+
+//   .notice-block .icon {
+//     width: 24px;
+//     height: 24px;
+//     align-self: flex-start;
+//     margin-right: 4px;
+//     position: relative;
+//     top: 1px;
+//   }
+
+//   .notice-block.tip {
+//     background: ${props => props.theme.noticeTipBackground};
+//     color: ${props => props.theme.noticeTipText};
+
+//     a {
+//       color: ${props => props.theme.noticeTipText};
+//     }
+//   }
+
+//   .notice-block.warning {
+//     background: ${props => props.theme.noticeWarningBackground};
+//     color: ${props => props.theme.noticeWarningText};
+
+//     a {
+//       color: ${props => props.theme.noticeWarningText};
+//     }
+//   }
+
+//   blockquote {
+//     border-left: 3px solid ${props => props.theme.quote};
+//     margin: 0;
+//     padding-left: 10px;
+//     font-style: italic;
+//   }
+
+//   b,
+//   strong {
+//     font-weight: 600;
+//   }
+
+//   .template-placeholder {
+//     color: ${props => props.theme.placeholder};
+//     border-bottom: 1px dotted ${props => props.theme.placeholder};
+//     border-radius: 2px;
+//     cursor: text;
+
+//     &:hover {
+//       border-bottom: 1px dotted
+//         ${props =>
+//           props.readOnly ? props.theme.placeholder : props.theme.textSecondary};
+//     }
+//   }
+
+//   p {
+//     position: relative;
+//     margin: 0;
+//   }
+
+//   a {
+//     color: ${props => props.theme.link};
+//   }
+
+//   a:hover {
+//     text-decoration: ${props => (props.readOnly ? "underline" : "none")};
+//   }
+
+//   ul,
+//   ol {
+//     margin: 0 0.1em;
+//     padding: 0 0 0 1em;
+
+//     ul,
+//     ol {
+//       margin: 0;
+//     }
+//   }
+
+//   ol ol {
+//     list-style: lower-alpha;
+//   }
+
+//   ol ol ol {
+//     list-style: lower-roman;
+//   }
+
+//   ul.checkbox_list {
+//     list-style: none;
+//     padding: 0;
+//     margin: 0;
+//   }
+
+//   ul.checkbox_list li {
+//     display: flex;
+//   }
+
+//   ul.checkbox_list li.checked > div > p {
+//     color: ${props => props.theme.textSecondary};
+//     text-decoration: line-through;
+//   }
+
+//   ul.checkbox_list li input {
+//     pointer-events: ${props =>
+//       props.readOnly && !props.readOnlyWriteCheckboxes ? "none" : "initial"};
+//     opacity: ${props =>
+//       props.readOnly && !props.readOnlyWriteCheckboxes ? 0.75 : 1};
+//     margin: 0 0.5em 0 0;
+//     width: 14px;
+//     height: 14px;
+//   }
+
+//   li p:first-child {
+//     margin: 0;
+//     word-break: break-all;
+//   }
+
+//   hr {
+//     height: 0;
+//     border: 0;
+//     border-top: 1px solid ${props => props.theme.horizontalRule};
+//   }
+
+//   code {
+//     border-radius: 4px;
+//     border: 1px solid ${props => props.theme.codeBorder};
+//     padding: 3px 4px;
+//     font-family: ${props => props.theme.fontFamilyMono};
+//     font-size: 85%;
+//   }
+
+//   mark {
+//     border-radius: 1px;
+//     color: ${props => props.theme.black};
+//     background: ${props => props.theme.textHighlight};
+//   }
+
+//   .code-block,
+//   .notice-block {
+//     position: relative;
+
+//     select,
+//     button {
+//       background: ${props => props.theme.blockToolbarBackground};
+//       color: ${props => props.theme.blockToolbarItem};
+//       border-width: 1px;
+//       font-size: 13px;
+//       display: none;
+//       position: absolute;
+//       border-radius: 4px;
+//       padding: 2px;
+//       z-index: 1;
+//       top: 4px;
+//       right: 4px;
+//     }
+
+//     button {
+//       padding: 2px 4px;
+//     }
+
+//     &:hover {
+//       select {
+//         display: ${props => (props.readOnly ? "none" : "inline")};
+//       }
+
+//       button {
+//         display: ${props => (props.readOnly ? "inline" : "none")};
+//       }
+//     }
+
+//     select:focus,
+//     select:active {
+//       display: inline;
+//     }
+//   }
+
+//   pre {
+//     display: block;
+//     overflow-x: auto;
+//     padding: 0.75em 1em;
+//     line-height: 1.4em;
+//     position: relative;
+//     background: ${props => props.theme.codeBackground};
+//     border-radius: 4px;
+//     border: 1px solid ${props => props.theme.codeBorder};
+
+//     -webkit-font-smoothing: initial;
+//     font-family: ${props => props.theme.fontFamilyMono};
+//     font-size: 13px;
+//     direction: ltr;
+//     text-align: left;
+//     white-space: pre;
+//     word-spacing: normal;
+//     word-break: normal;
+//     -moz-tab-size: 4;
+//     -o-tab-size: 4;
+//     tab-size: 4;
+//     -webkit-hyphens: none;
+//     -moz-hyphens: none;
+//     -ms-hyphens: none;
+//     hyphens: none;
+//     color: ${props => props.theme.code};
+//     margin: 0;
+
+//     code {
+//       font-size: 13px;
+//       background: none;
+//       padding: 0;
+//       border: 0;
+//     }
+//   }
+
+//   .token.comment,
+//   .token.prolog,
+//   .token.doctype,
+//   .token.cdata {
+//     color: ${props => props.theme.codeComment};
+//   }
+
+//   .token.punctuation {
+//     color: ${props => props.theme.codePunctuation};
+//   }
+
+//   .token.namespace {
+//     opacity: 0.7;
+//   }
+
+//   .token.operator,
+//   .token.boolean,
+//   .token.number {
+//     color: ${props => props.theme.codeNumber};
+//   }
+
+//   .token.property {
+//     color: ${props => props.theme.codeProperty};
+//   }
+
+//   .token.tag {
+//     color: ${props => props.theme.codeTag};
+//   }
+
+//   .token.string {
+//     color: ${props => props.theme.codeString};
+//   }
+
+//   .token.selector {
+//     color: ${props => props.theme.codeSelector};
+//   }
+
+//   .token.attr-name {
+//     color: ${props => props.theme.codeAttr};
+//   }
+
+//   .token.entity,
+//   .token.url,
+//   .language-css .token.string,
+//   .style .token.string {
+//     color: ${props => props.theme.codeEntity};
+//   }
+
+//   .token.attr-value,
+//   .token.keyword,
+//   .token.control,
+//   .token.directive,
+//   .token.unit {
+//     color: ${props => props.theme.codeKeyword};
+//   }
+
+//   .token.function {
+//     color: ${props => props.theme.codeFunction};
+//   }
+
+//   .token.statement,
+//   .token.regex,
+//   .token.atrule {
+//     color: ${props => props.theme.codeStatement};
+//   }
+
+//   .token.placeholder,
+//   .token.variable {
+//     color: ${props => props.theme.codePlaceholder};
+//   }
+
+//   .token.deleted {
+//     text-decoration: line-through;
+//   }
+
+//   .token.inserted {
+//     border-bottom: 1px dotted ${props => props.theme.codeInserted};
+//     text-decoration: none;
+//   }
+
+//   .token.italic {
+//     font-style: italic;
+//   }
+
+//   .token.important,
+//   .token.bold {
+//     font-weight: bold;
+//   }
+
+//   .token.important {
+//     color: ${props => props.theme.codeImportant};
+//   }
+
+//   .token.entity {
+//     cursor: help;
+//   }
+
+//   table {
+//     width: 100%;
+//     border-collapse: collapse;
+//     border-radius: 4px;
+//     margin-top: 1em;
+
+//     tr {
+//       position: relative;
+//       border-bottom: 1px solid ${props => props.theme.tableDivider};
+//     }
+
+//     th {
+//       background: ${props => props.theme.tableHeaderBackground};
+//     }
+
+//     td,
+//     th {
+//       position: relative;
+//       vertical-align: top;
+//       border: 1px solid ${props => props.theme.tableDivider};
+//       position: relative;
+//       padding: 4px 8px;
+//       text-align: left;
+//       min-width: 100px;
+//     }
+
+//     .selectedCell {
+//       background: ${props =>
+//         props.readOnly ? "inherit" : props.theme.tableSelectedBackground};
+
+//       /* fixes Firefox background color painting over border:
+//        * https://bugzilla.mozilla.org/show_bug.cgi?id=688556 */
+//       background-clip: padding-box;
+//     }
+
+//     .grip-column {
+//       /* usage of ::after for all of the table grips works around a bug in
+//        * prosemirror-tables that causes Safari to hang when selecting a cell
+//        * in an empty table:
+//        * https://github.com/ProseMirror/prosemirror/issues/947 */
+//       &::after {
+//         content: "";
+//         cursor: pointer;
+//         position: absolute;
+//         top: -16px;
+//         left: 0;
+//         width: 100%;
+//         height: 12px;
+//         background: ${props => props.theme.tableDivider};
+//         border-bottom: 3px solid ${props => props.theme.background};
+//         display: ${props => (props.readOnly ? "none" : "block")};
+//       }
+
+//       &:hover::after {
+//         background: ${props => props.theme.text};
+//       }
+//       &.first::after {
+//         border-top-left-radius: 3px;
+//       }
+//       &.last::after {
+//         border-top-right-radius: 3px;
+//       }
+//       &.selected::after {
+//         background: ${props => props.theme.tableSelected};
+//       }
+//     }
+
+//     .grip-row {
+//       &::after {
+//         content: "";
+//         cursor: pointer;
+//         position: absolute;
+//         left: -16px;
+//         top: 0;
+//         height: 100%;
+//         width: 12px;
+//         background: ${props => props.theme.tableDivider};
+//         border-right: 3px solid ${props => props.theme.background};
+//         display: ${props => (props.readOnly ? "none" : "block")};
+//       }
+
+//       &:hover::after {
+//         background: ${props => props.theme.text};
+//       }
+//       &.first::after {
+//         border-top-left-radius: 3px;
+//       }
+//       &.last::after {
+//         border-bottom-left-radius: 3px;
+//       }
+//       &.selected::after {
+//         background: ${props => props.theme.tableSelected};
+//       }
+//     }
+
+//     .grip-table {
+//       &::after {
+//         content: "";
+//         cursor: pointer;
+//         background: ${props => props.theme.tableDivider};
+//         width: 13px;
+//         height: 13px;
+//         border-radius: 13px;
+//         border: 2px solid ${props => props.theme.background};
+//         position: absolute;
+//         top: -18px;
+//         left: -18px;
+//         display: ${props => (props.readOnly ? "none" : "block")};
+//       }
+
+//       &:hover::after {
+//         background: ${props => props.theme.text};
+//       }
+//       &.selected::after {
+//         background: ${props => props.theme.tableSelected};
+//       }
+//     }
+//   }
+
+//   .scrollable-wrapper {
+//     position: relative;
+//     margin: 0.5em 0px;
+//     scrollbar-width: thin;
+//     scrollbar-color: transparent transparent;
+
+//     &:hover {
+//       scrollbar-color: ${props => props.theme.scrollbarThumb}
+//         ${props => props.theme.scrollbarBackground};
+//     }
+
+//     & ::-webkit-scrollbar {
+//       height: 14px;
+//       background-color: transparent;
+//     }
+
+//     &:hover ::-webkit-scrollbar {
+//       background-color: ${props => props.theme.scrollbarBackground};
+//     }
+
+//     & ::-webkit-scrollbar-thumb {
+//       background-color: transparent;
+//       border: 3px solid transparent;
+//       border-radius: 7px;
+//     }
+
+//     &:hover ::-webkit-scrollbar-thumb {
+//       background-color: ${props => props.theme.scrollbarThumb};
+//       border-color: ${props => props.theme.scrollbarBackground};
+//     }
+//   }
+
+//   .scrollable {
+//     overflow-y: hidden;
+//     overflow-x: auto;
+//     padding-left: 1em;
+//     margin-left: -1em;
+//     border-left: 1px solid transparent;
+//     border-right: 1px solid transparent;
+//     transition: border 250ms ease-in-out 0s;
+//   }
+
+//   .scrollable-shadow {
+//     position: absolute;
+//     top: 0;
+//     bottom: 0;
+//     left: -1em;
+//     width: 16px;
+//     transition: box-shadow 250ms ease-in-out;
+//     border: 0px solid transparent;
+//     border-left-width: 1em;
+//     pointer-events: none;
+
+//     &.left {
+//       box-shadow: 16px 0 16px -16px inset rgba(0, 0, 0, 0.25);
+//       border-left: 1em solid ${props => props.theme.background};
+//     }
+
+//     &.right {
+//       right: 0;
+//       left: auto;
+//       box-shadow: -16px 0 16px -16px inset rgba(0, 0, 0, 0.25);
+//     }
+//   }
+
+//   .block-menu-trigger {
+//     display: ${props => (props.readOnly ? "none" : "block")};
+//     height: 1em;
+//     color: ${props => props.theme.textSecondary};
+//     background: none;
+//     border-radius: 100%;
+//     font-size: 30px;
+//     position: absolute;
+//     transform: scale(0.9);
+//     transition: color 150ms cubic-bezier(0.175, 0.885, 0.32, 1.275),
+//       transform 150ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+//     outline: none;
+//     border: 0;
+//     line-height: 1;
+//     margin-top: -6px;
+//     left: -34px;
+
+//     &:hover,
+//     &:focus {
+//       cursor: pointer;
+//       transform: scale(1);
+//       color: ${props => props.theme.text};
+//     }
+//   }
+
+//   @media print {
+//     .block-menu-trigger {
+//       display: none;
+//     }
+//   }
+
+//   .ProseMirror-gapcursor {
+//     display: none;
+//     pointer-events: none;
+//     position: absolute;
+//   }
+
+//   .ProseMirror-gapcursor:after {
+//     content: "";
+//     display: block;
+//     position: absolute;
+//     top: -2px;
+//     width: 20px;
+//     border-top: 1px solid ${props => props.theme.cursor};
+//     animation: ProseMirror-cursor-blink 1.1s steps(2, start) infinite;
+//   }
+
+//   @keyframes ProseMirror-cursor-blink {
+//     to {
+//       visibility: hidden;
+//     }
+//   }
+
+//   .ProseMirror-focused .ProseMirror-gapcursor {
+//     display: block;
+//   }
+
+//   @media print {
+//     em,
+//     blockquote {
+//       font-family: "SF Pro Text", ${props => props.theme.fontFamily};
+//     }
+//   }
 export default RichMarkdownEditor;

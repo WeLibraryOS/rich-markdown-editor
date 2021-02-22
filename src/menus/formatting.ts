@@ -1,5 +1,5 @@
+import * as React from "react";
 import {
-  BoldIcon,
   CodeIcon,
   Heading1Icon,
   Heading2Icon,
@@ -17,6 +17,11 @@ import isMarkActive from "../queries/isMarkActive";
 import isNodeActive from "../queries/isNodeActive";
 import { MenuItem } from "../types";
 import baseDictionary from "../dictionary";
+import { DirectiveDefinitionNode } from "graphql";
+
+
+import {BoldIcon, StrikeThroughIcon, HeadingsIcon, HeadingsDropdown} from './icons';
+
 
 export default function formattingMenuItems(
   state: EditorState,
@@ -41,6 +46,14 @@ export default function formattingMenuItems(
       visible: isTemplate,
     },
     {
+      name: "heading",
+      tooltip: dictionary.heading,
+      icon: HeadingsDropdown,
+      active: isNodeActive(schema.nodes.heading, { level: 1 }),
+      attrs: { level: 1 },
+      visible: allowBlocks,
+    },
+    {
       name: "strong",
       tooltip: dictionary.strong,
       icon: BoldIcon,
@@ -55,16 +68,16 @@ export default function formattingMenuItems(
     {
       name: "strikethrough",
       tooltip: dictionary.strikethrough,
-      icon: StrikethroughIcon,
+      icon: StrikeThroughIcon,
       active: isMarkActive(schema.marks.strikethrough),
     },
-    {
-      name: "mark",
-      tooltip: dictionary.mark,
-      icon: HighlightIcon,
-      active: isMarkActive(schema.marks.mark),
-      visible: !isTemplate,
-    },
+    // {
+    //   name: "mark",
+    //   tooltip: dictionary.mark,
+    //   icon: HighlightIcon,
+    //   active: isMarkActive(schema.marks.mark),
+    //   visible: !isTemplate,
+    // },
     {
       name: "code_inline",
       tooltip: dictionary.codeInline,
@@ -75,22 +88,15 @@ export default function formattingMenuItems(
       name: "separator",
       visible: allowBlocks,
     },
-    {
-      name: "heading",
-      tooltip: dictionary.heading,
-      icon: Heading1Icon,
-      active: isNodeActive(schema.nodes.heading, { level: 1 }),
-      attrs: { level: 1 },
-      visible: allowBlocks,
-    },
-    {
-      name: "heading",
-      tooltip: dictionary.subheading,
-      icon: Heading2Icon,
-      active: isNodeActive(schema.nodes.heading, { level: 2 }),
-      attrs: { level: 2 },
-      visible: allowBlocks,
-    },
+   
+    // {
+    //   name: "heading",
+    //   tooltip: dictionary.subheading,
+    //   icon: Heading2Icon,
+    //   active: isNodeActive(schema.nodes.heading, { level: 2 }),
+    //   attrs: { level: 2 },
+    //   visible: allowBlocks,
+    // },
     {
       name: "blockquote",
       tooltip: dictionary.quote,

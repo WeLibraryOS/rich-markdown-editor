@@ -2,7 +2,6 @@ import { toggleMark } from "prosemirror-commands";
 import { Plugin } from "prosemirror-state";
 import { InputRule } from "prosemirror-inputrules";
 import Mark from "./Mark";
-import isModKey from "../lib/isModKey";
 
 const LINK_INPUT_REGEX = /\[(.+)]\((\S+)\)/;
 
@@ -112,12 +111,12 @@ export default class Link extends Mark {
               }
               return false;
             },
-            click: (view, event: KeyboardEvent) => {
+            click: (view, event: MouseEvent) => {
               // allow opening links in editing mode with the meta/cmd key
               if (
                 view.props.editable &&
                 view.props.editable(view.state) &&
-                !isModKey(event)
+                !event.metaKey
               ) {
                 return false;
               }

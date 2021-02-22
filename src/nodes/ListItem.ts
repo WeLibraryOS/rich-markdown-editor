@@ -4,7 +4,6 @@ import {
   liftListItem,
 } from "prosemirror-schema-list";
 import Node from "./Node";
-import isInList from "../queries/isInList";
 
 export default class ListItem extends Node {
   get name() {
@@ -28,14 +27,6 @@ export default class ListItem extends Node {
       "Shift-Tab": liftListItem(type),
       "Mod-]": sinkListItem(type),
       "Mod-[": liftListItem(type),
-      "Shift-Enter": (state, dispatch) => {
-        if (!isInList(state)) return false;
-        if (!state.selection.empty) return false;
-
-        const { tr, selection } = state;
-        dispatch(tr.split(selection.to));
-        return true;
-      },
     };
   }
 

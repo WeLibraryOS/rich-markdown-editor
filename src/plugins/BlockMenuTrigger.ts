@@ -1,14 +1,12 @@
-import { InputRule } from "prosemirror-inputrules";
-import ReactDOM from "react-dom";
-import * as React from "react";
 import { Plugin } from "prosemirror-state";
-import { isInTable } from "prosemirror-tables";
-import { findParentNode } from "prosemirror-utils";
-import { PlusIcon } from "outline-icons";
+import { InputRule } from "prosemirror-inputrules";
 import { Decoration, DecorationSet } from "prosemirror-view";
+import { findParentNode } from "prosemirror-utils";
 import Extension from "../lib/Extension";
 
 const MAX_MATCH = 500;
+// const OPEN_REGEX = /^\@(\w+)?$/;
+// const CLOSE_REGEX = /(^(?!\@(\w+)?)(.*)$|^\@((\w+)\s.*|\s)$)/;
 const OPEN_REGEX = /^\/(\w+)?$/;
 const CLOSE_REGEX = /(^(?!\/(\w+)?)(.*)$|^\/((\w+)\s.*|\s)$)/;
 
@@ -33,6 +31,8 @@ function run(view, from, to, regex, handler) {
 
   const match = regex.exec(textBefore);
   const tr = handler(state, match, match ? from - match[0].length : from, to);
+  console.log('match', match);
+  console.log('tr', tr);
   if (!tr) return false;
   return true;
 }
@@ -43,10 +43,6 @@ export default class BlockMenuTrigger extends Extension {
   }
 
   get plugins() {
-    const button = document.createElement("button");
-    button.className = "block-menu-trigger";
-    ReactDOM.render(<PlusIcon fill="currentColor" />, button);
-
     return [
       new Plugin({
         props: {
@@ -105,15 +101,20 @@ export default class BlockMenuTrigger extends Extension {
             const isEmpty = parent && parent.node.content.size === 0;
             const isSlash = parent && parent.node.textContent === "/";
             const isTopLevel = state.selection.$from.depth === 1;
+            const disableIconTrigger = true;
 
             if (isTopLevel) {
-              if (isEmpty) {
+              if (isEmpty && !disableIconTrigger) {
                 decorations.push(
                   Decoration.widget(parent.pos, () => {
-                    button.addEventListener("click", () => {
+                    const icon = document.createElement("button");
+                    icon.type = "button";
+                    icon.className = "block-menu-trigger";
+                    icon.innerText = "+";
+                    icon.addEventListener("click", () => {
                       this.options.onOpen("");
                     });
-                    return button;
+                    return icon;
                   })
                 );
 
@@ -157,11 +158,7 @@ export default class BlockMenuTrigger extends Extension {
       // main regex should match only:
       // /word
       new InputRule(OPEN_REGEX, (state, match) => {
-        if (
-          match &&
-          state.selection.$from.parent.type.name === "paragraph" &&
-          !isInTable(state)
-        ) {
+        if (match && state.selection.$from.parent.type.name === "paragraph") {
           this.options.onOpen(match[1]);
         }
         return null;
