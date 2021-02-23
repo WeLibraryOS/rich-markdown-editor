@@ -17,7 +17,6 @@ import isMarkActive from "../queries/isMarkActive";
 import isNodeActive from "../queries/isNodeActive";
 import { MenuItem } from "../types";
 import baseDictionary from "../dictionary";
-import { DirectiveDefinitionNode } from "graphql";
 
 
 import {BoldIcon, StrikeThroughIcon, HeadingsIcon, HeadingsDropdown} from './icons';
