@@ -45,7 +45,7 @@ const MentionsMenuContainer= props => {
   const {participants} = props;
  
 
-  return <MentionsMenu {...props} mentionsLoading={mentionsLoading} userList={participants} />
+  return <MentionsMenu {...props}  userList={participants} />
 }
 class MentionsMenu extends React.Component<Props, State> {
   menuRef = React.createRef<HTMLDivElement>();
@@ -69,7 +69,6 @@ class MentionsMenu extends React.Component<Props, State> {
 
   shouldComponentUpdate(nextProps, nextState) {
     return (
-      !nextProps.mentionsLoading && !this.props.mentionsLoading ||
       nextProps.userList ||
       nextProps.isActive !== this.props.isActive ||
       nextState !== this.state
