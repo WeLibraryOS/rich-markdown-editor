@@ -95,13 +95,14 @@ class MentionsMenu extends React.Component<Props, State> {
   }
 
   handleKeyDown = (event: KeyboardEvent) => {
+    const { userList } = this.props;
     if (!this.props.isActive) return;
 
     if (event.key === "Enter") {
       event.preventDefault();
       event.stopPropagation();
 
-      const item = this.props.userList[this.state.selectedIndex];
+      const item = userList && userList[this.state.selectedIndex];
 
       if (item) {
         this.insertItem(item);
@@ -114,9 +115,9 @@ class MentionsMenu extends React.Component<Props, State> {
       event.preventDefault();
       event.stopPropagation();
 
-      if (this.props.userList.length) {
+      if (userList?.length) {
         const prevIndex = this.state.selectedIndex - 1;
-        const prev = this.props.userList[prevIndex];
+        const prev = userList && userList[prevIndex];
 
         this.setState({
           selectedIndex: Math.max(
@@ -136,11 +137,11 @@ class MentionsMenu extends React.Component<Props, State> {
     ) {
       event.preventDefault();
       event.stopPropagation();
-
-      if (this.props.userList.length) {
-        const total = this.props.userList.length - 1;
+    
+      if (userList?.length) {
+        const total = userList?.length - 1;
         const nextIndex = this.state.selectedIndex + 1;
-        const next = this.props.userList[nextIndex];
+        const next = userList[nextIndex];
 
         this.setState({
           selectedIndex: Math.min(
