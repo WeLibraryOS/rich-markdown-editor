@@ -9,9 +9,6 @@ import BlockMenuItem from "./BlockMenuItem";
 import Input from "./Input";
 import baseDictionary from "../dictionary";
 import {CustomSuggestion} from './CustomSuggestionRow';
-import { useQuery} from '@apollo/client';
-import { SEARCH_NETWORK } from '/imports/wl-core/graphql/user/queries.js';
-
 const SSR = typeof window === "undefined";
 
 type Props = {
@@ -44,49 +41,11 @@ type State = {
 };
 
 
-const MentionsMenuQuery = props => {
-  const {search, participants} = props;
-  // Storing search results in local state prevents flickering 
-  // during display of search results
-  const [searchResults, setSearchResults ] = useState();
-  const {
-    loading: mentionsLoading,
-    error: mentionsErr,
-    data: mentionsData,
-    refetch: mentionsRefetch,
- } = useQuery(SEARCH_NETWORK, {
-      variables: {
-          searchQuery: search,
-      },
-      fetchPolicy: 'cache-and-network',
-      nextFetchPolicy: 'cache-first',
-      skip: !search || participants,
-  });
+const MentionsMenuContainer= props => {
+  const {participants} = props;
+ 
 
-  let userMatches;
-
-  useEffect(()=>{
-
-   if(!mentionsLoading){
-    const userList = mentionsData?.listUsers.map(user => {
-      return {
-          display: user?.profile?.full_name,
-          id: user._id,
-          key: user._id,
-          userThumb: user?.profile?.picture,
-      };
-   });
-   setSearchResults(userList);
-  }
-
-  },[mentionsData, mentionsLoading])
-
-  if(participants){
-    const word = new RegExp(search?.trim(), 'i');
-    userMatches = participants.filter(participant => participant.display.match(word))
-  }
-
-  return <MentionsMenu {...props} mentionsLoading={mentionsLoading} userList={userMatches || searchResults} />
+  return <MentionsMenu {...props} mentionsLoading={mentionsLoading} userList={participants} />
 }
 class MentionsMenu extends React.Component<Props, State> {
   menuRef = React.createRef<HTMLDivElement>();
@@ -474,4 +433,4 @@ export const Wrapper = styled.div<{
   }
 `;
 
-export default MentionsMenuQuery;
+export default MentionsMenuContainer;
