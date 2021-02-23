@@ -9,10 +9,10 @@ export enum ToastType {
 export type MenuItem = {
   icon?: typeof React.Component | React.FC<any>;
   name?: string;
-  menutype?:string;
+  menutype?: string;
   title?: string;
-  className?:string;
-  options?:object;
+  className?: string;
+  options?: object;
   shortcut?: string;
   keywords?: string;
   tooltip?: string;

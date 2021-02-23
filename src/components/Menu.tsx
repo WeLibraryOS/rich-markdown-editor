@@ -6,8 +6,6 @@ import ToolbarSeparator from "./ToolbarSeparator";
 import theme from "../theme";
 import { MenuItem } from "../types";
 
-
-
 type Props = {
   tooltip: typeof React.Component | React.FC<any>;
   commands: Record<string, any>;
@@ -33,23 +31,23 @@ class Menu extends React.Component<Props> {
           const Icon = item.icon;
           const isActive = item.active ? item.active(state) : false;
 
-          const handleClick=(e)=>{
+          const handleClick = (e) => {
             e.preventDefault();
-            if(item?.menutype !== 'dropdown'){
-              item.name && this.props.commands[item.name](item.attrs)
+            if (item?.menutype !== "dropdown") {
+              item.name && this.props.commands[item.name](item.attrs);
             }
-          }
+          };
 
           return (
             <ToolbarButton
               key={index}
-              type={item?.menutype}
+              type="button"
               className={item?.className}
               onClick={handleClick}
               active={isActive}
             >
               <Tooltip tooltip={item.tooltip} placement="top">
-                <Icon color={'black'} />
+                <Icon color={"black"} />
               </Tooltip>
             </ToolbarButton>
           );
