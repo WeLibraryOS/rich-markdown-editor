@@ -1,26 +1,22 @@
-[![npm version](https://badge.fury.io/js/rich-markdown-editor.svg)](https://badge.fury.io/js/rich-markdown-editor) [![CircleCI](https://img.shields.io/circleci/project/github/outline/rich-markdown-editor.svg)](https://circleci.com/gh/outline/rich-markdown-editor) [![Formatted with Prettier](https://img.shields.io/badge/code_style-prettier-ff69b4.svg?style=flat)](https://github.com/prettier/prettier) [![TypeScript](https://camo.githubusercontent.com/21132e0838961fbecb75077042aa9b15bc0bf6f9/68747470733a2f2f62616467656e2e6e65742f62616467652f4275696c74253230576974682f547970655363726970742f626c7565)](https://www.typescriptlang.org/) [![Sponsor](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub)](https://github.com/sponsors/outline)
+# WeLibrary Editor
 
-
-
-# rich-markdown-editor
-
-A React and [Prosemirror](https://prosemirror.net/) based editor that powers [Outline](http://getoutline.com) and can also be used for displaying content in a read-only fashion.
+A React and [Prosemirror](https://prosemirror.net/) based editor that is based off the editor that powers [Outline](http://getoutline.com) and can also be used for displaying content in a read-only fashion.
 The editor is WYSIWYG and includes formatting tools whilst retaining the ability to write markdown shortcuts inline and output plain Markdown.
 
-> Important Note: This project is **not attempting to be an all-purpose Markdown editor**. It is built for the [Outline](http://getoutline.com) knowledge base, and whilst others are welcome to fork or use this package in your own products, development decisions are centered around the needs of Outline. 
+> Important Note: This project is **not attempting to be an all-purpose Markdown editor**. It is based on the editor built for the [Outline](http://getoutline.com) knowledge base, and whilst others are welcome to fork or use this package in your own products, development decisions are centered around the needs of Outline. 
 
 ## Usage
 
 ### Install
 
 ```bash
-yarn add rich-markdown-editor
+yarn add @WeLibraryOS/welibrary-editor
 ```
 
 or
 
 ```bash
-npm install rich-markdown-editor
+npm install @WeLibraryOS/welibrary-editor
 ```
 
 Note that `react`, `react-dom`, and `styled-components` are _required_ peer dependencies.
@@ -28,11 +24,16 @@ Note that `react`, `react-dom`, and `styled-components` are _required_ peer depe
 ### Import
 
 ```javascript
-import Editor from "rich-markdown-editor";
+import Editor, { MinimalEditor } from "rich-markdown-editor";
 
-<Editor
-  defaultValue="Hello world!"
-/>
+<>
+    <Editor
+      defaultValue="Hello world!"
+    />
+    <MinimalEditor
+      defaultValue="Hello world!"
+    />
+</>
 ```
 
 Clone this repo and run the Storybook with `yarn start` to see a wide variety of example usage.
@@ -298,6 +299,8 @@ This project uses [yarn](https://yarnpkg.com) to manage dependencies. You can us
 ```
 yarn install
 ```
+
+Run `yarn link` inside of this repo, then `cd` over to the `WeLibrary` repo and run `yarn link welibary-editor`.
 
 When running in development Storybook is included to example editors with hot reloading. After installing dependencies run `yarn start` to get going.
 
