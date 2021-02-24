@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import OutsideClickHandler from 'react-outside-click-handler';
+// import OutsideClickHandler from 'react-outside-click-handler';
 import { constant } from 'lodash';
-
-
-
 
 const MenuButton = ({ command, title, isEnabled, isActive, label, hideLabel, className }) => {
     let baseClassname = className || 'button-reset editor-menubar-button';
@@ -91,9 +88,9 @@ export const HeadingsDropdown = ({
             }}
         >
             {show && (
-                <OutsideClickHandler onOutsideClick={() => setShow(false)}>
+                // <OutsideClickHandler onOutsideClick={() => setShow(false)}>
                     <div className="heading-options">{headingOptions}</div>
-                </OutsideClickHandler>
+                // </OutsideClickHandler>
             )}
         </button>
     );
