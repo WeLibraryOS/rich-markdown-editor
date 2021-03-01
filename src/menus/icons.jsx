@@ -49,7 +49,7 @@ export const HeadingsDropdown = ({
     nodes,
     isEnabled=true,
 }) => {
-    handleSelect = level => {
+    const handleSelect = level => {
         // setActiveHeading(level);
     };
 
@@ -74,7 +74,7 @@ export const HeadingsDropdown = ({
         );
     });
 
-    handleShow = e => {
+    const handleShow = e => {
         setShow(!show);
     };
 
