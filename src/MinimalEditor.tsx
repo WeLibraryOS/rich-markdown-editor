@@ -115,6 +115,7 @@ export type Props = {
   tooltip: typeof React.Component | React.FC<any>;
   className?: string;
   style?: Record<string, string>;
+  onMentionInput?: (search:string) => void;
   participants?: Array<Object>;
 };
 
@@ -538,6 +539,7 @@ class MinimalEditor extends React.PureComponent<Props, State> {
 
   handleOpenMentionsMenu = (search:string = ' ') => {
     this.setState({ mentionsMenuOpen: true, mentionsMenuSearch: search });
+    if(this.props.onMentionInput) this.props.onMentionInput(search);
   }
 
   handleSelectRow = (index: number, state: EditorState) => {
