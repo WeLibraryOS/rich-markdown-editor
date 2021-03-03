@@ -20,6 +20,21 @@ npm install @WeLibraryOS/welibrary-editor
 ```
 
 Note that `react`, `react-dom`, and `styled-components` are _required_ peer dependencies.
+Also currently, the following prosemirror packages are peer dependencies, until all WYSIWYG editors in WeLibrary are migrated to use this package:  
+    "prosemirror-commands": "^1.1.6",
+    "prosemirror-dropcursor": "^1.3.3",
+    "prosemirror-gapcursor": "^1.1.5",
+    "prosemirror-history": "^1.1.3",
+    "prosemirror-inputrules": "^1.1.3",
+    "prosemirror-keymap": "^1.1.4",
+    "prosemirror-markdown": "^1.4.4",
+    "prosemirror-model": "^1.13.3",
+    "prosemirror-schema-list": "^1.1.2",
+    "prosemirror-state": "^1.3.4",
+    "prosemirror-tables": "^1.1.1",
+    "prosemirror-transform": "1.2.5",
+    "prosemirror-utils": "^0.9.6",
+    "prosemirror-view": "^1.17.6",
 
 ### Import
 
