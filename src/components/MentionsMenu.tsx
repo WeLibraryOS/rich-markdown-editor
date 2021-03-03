@@ -299,7 +299,7 @@ class MentionsMenu extends React.Component<Props, State> {
 
     const { top, left, bottom } = paragraph.node.getBoundingClientRect();
     // offset x position if at edge of window
-    const startPosLeft = startPos.left + 150 > window?.innerWidth ? startPos.left - 150 : startPos.left;
+    const startPosLeft = startPos.left + 200 >= window?.innerWidth ? startPos.left - 150 : startPos.left;
     if (startPos.top - offsetHeight > margin) {
       return {
         left: startPosLeft + window.scrollX,
