@@ -8,22 +8,23 @@ export default class Mention extends Node {
 
   get schema() {
     return {
-      group: "inline",
-      inline:true,
-      selectable:true,
-      atom: true,
-      attrs: {
-        id:"",
-        display:"",
-      },
-      parseDOM: [{ tag: "span[data-mention-id][data-mention-display]" }],
-      toDOM: node => [
-        "span",
-        { class:'mention-input-node', src: node.attrs.id, contentEditable: false },
-        "@" + node.attrs.display,
-      ],
+        group: 'inline',
+        inline: true,
+        selectable: true,
+        draggable:true,
+        atom: true,
+        attrs: {
+            id: '',
+            display: '',
+        },
+        parseDOM: [{ tag: 'span[data-mention-id][data-mention-display]' }],
+        toDOM: node => [
+            'span',
+            { style: 'display:inline-block', src: node.attrs.id, contentEditable: false },
+            ['span', {  class:'mention-input-node', style: 'display:block'}, '@' + node.attrs.display] ,
+        ],
     };
-  }
+}
 
   commands({ type }) {
     return attrs => (state, dispatch) => {
