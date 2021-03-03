@@ -298,16 +298,18 @@ class MentionsMenu extends React.Component<Props, State> {
     } 
 
     const { top, left, bottom } = paragraph.node.getBoundingClientRect();
+    // offset x position if at edge of window
+    const startPosLeft = startPos.left + 150 > window?.innerWidth ? startPos.left - 150 : startPos.left;
     if (startPos.top - offsetHeight > margin) {
       return {
-        left: startPos.left + window.scrollX,
+        left: startPosLeft + window.scrollX,
         top: undefined,
         bottom: window.innerHeight - top - window.scrollY,
         isAbove: false,
       };
     } else {
       return {
-        left: startPos.left + window.scrollX,
+        left: startPosLeft + window.scrollX,
         top: bottom + window.scrollY,
         bottom: undefined,
         isAbove: true,
@@ -405,7 +407,7 @@ export const Wrapper = styled.div<{
   box-sizing: border-box;
   pointer-events: none;
   white-space: nowrap;
-  width: ${props => props.isMobileWidth ? `100%` : `300px`};
+  width: ${props => props.isMobileWidth ? `100%` : `200px`};
   max-height: 160px;
   overflow: hidden;
   overflow-y: auto;
